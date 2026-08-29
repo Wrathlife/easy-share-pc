@@ -59,10 +59,6 @@ public static class ProtocolPaths
         if (!fullFile.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(fullFile, fullRoot, StringComparison.OrdinalIgnoreCase))
         {
-            // #region agent log
-            AgentDebug.Log("path-escape", "ProtocolPaths.cs:BindUnderRoot", "rejected path outside root",
-                new { safe, fullFile, fullRoot }, "A");
-            // #endregion
             return null;
         }
         return fullFile;

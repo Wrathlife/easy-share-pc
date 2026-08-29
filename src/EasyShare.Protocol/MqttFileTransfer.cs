@@ -92,10 +92,6 @@ public sealed class MqttFileTransfer
             _receiveRoot = receiveRoot;
             foreach (var f in Directory.EnumerateFiles(receiveRoot, "*.partial"))
                 File.Delete(f);
-            // #region agent log
-            AgentDebug.Log("wipe-folder", "MqttFileTransfer.cs:PrepareGuestSink", "prepared session sink without recursive delete",
-                new { receiveRoot }, "post-fix");
-            // #endregion
         }
         if (_receiveStarted) return;
         if (expected.Count > 0)
@@ -169,10 +165,6 @@ public sealed class MqttFileTransfer
                 await Task.Delay(100, token).ConfigureAwait(false);
             if (!_peerAcked)
             {
-                // #region agent log
-                AgentDebug.Log("false-success", "MqttFileTransfer.cs:StartHostSendAsync", "mqtt host missing xfer-ack",
-                    new { }, "post-fix");
-                // #endregion
                 Fail("Receiver did not confirm the transfer");
                 return;
             }

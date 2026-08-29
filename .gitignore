@@ -4,3 +4,4 @@ current/
 **/obj/
 *.user
 .vs/
+debug-*.log

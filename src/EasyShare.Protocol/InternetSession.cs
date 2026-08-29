@@ -59,7 +59,6 @@ public sealed class InternetSession : IAsyncDisposable
     private CancellationTokenSource? _readyRetryCts;
     private CancellationTokenSource? _probeCts;
     private int _sessionGen;
-    private int _mqttInLogLeft = 20;
     private bool _transferComplete;
     private string? _transferFailed;
     private Task? _transferTask;
@@ -308,10 +307,6 @@ public sealed class InternetSession : IAsyncDisposable
         _guestReceiveRoot = sink;
         EnsureMqttFileTransfer();
         _mqttTransfer!.PrepareGuestSink(sink, expected);
-        // #region agent log
-        AgentDebug.Log("wipe-folder", "InternetSession.cs:PrepareGuestFileSinkAsync", "mqtt sink is session subdirectory",
-            new { receiveRoot, sink }, "post-fix");
-        // #endregion
         if (!beginTransfer) return;
         if (IsTransferOrchestratorActive) return;
         _transferTask = RunGuestTransferAsync(expected, receiveRoot, encryptFileTransfer, ct);
@@ -373,7 +368,6 @@ public sealed class InternetSession : IAsyncDisposable
         _transferComplete = false;
         _transferFailed = null;
         _seenNonces.Clear();
-        _mqttInLogLeft = 20;
         EphemeralPairChanged?.Invoke(null);
         TrustHandshakeChanged?.Invoke(_trustHandshake);
         SetState(new PairingState.Idle());
@@ -439,20 +433,6 @@ public sealed class InternetSession : IAsyncDisposable
         {
             var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
             var topic = e.ApplicationMessage.Topic;
-            // #region agent log
-            if (Interlocked.Decrement(ref _mqttInLogLeft) >= 0)
-            {
-                AgentDebug.Log("H7", "InternetSession.cs:ApplicationMessageReceived", "mqtt in",
-                    new
-                    {
-                        bytes = e.ApplicationMessage.PayloadSegment.Count,
-                        role = _role,
-                        id8 = _sessionTopicId is { Length: >= 8 } t ? t[..8] : _sessionTopicId,
-                        trustTopic = topic.Contains("/trust/", StringComparison.Ordinal)
-                    },
-                    "pair-3");
-            }
-            // #endregion
             _ = Task.Run(() => OnMessageAsync(topic, payload));
             return Task.CompletedTask;
         };
@@ -483,50 +463,12 @@ public sealed class InternetSession : IAsyncDisposable
             try
             {
                 await client.ConnectAsync(options, _sessionCts.Token).ConfigureAwait(false);
-                // #region agent log
-                AgentDebug.Log("H5", "InternetSession.cs:ConnectMqttAsync", "mqtt connect ok",
-                    new
-                    {
-                        role = _role,
-                        id8 = _sessionTopicId is { Length: >= 8 } t ? t[..8] : _sessionTopicId,
-                        trust = _topic?.Contains("/trust/") == true,
-                        attempt
-                    },
-                    "pair-3");
-                // #endregion
-                // #region agent log
-                try
-                {
-                    var addrs = Dns.GetHostAddresses(BrokerHost);
-                    var first = addrs.FirstOrDefault();
-                    AgentDebug.Log("H6", "InternetSession.cs:ConnectMqttAsync", "broker peer",
-                        new
-                        {
-                            firstFamily = first?.AddressFamily == AddressFamily.InterNetworkV6 ? "v6"
-                                : first?.AddressFamily == AddressFamily.InterNetwork ? "v4" : "?",
-                            hasV4 = addrs.Any(a => a.AddressFamily == AddressFamily.InterNetwork),
-                            hasV6 = addrs.Any(a => a.AddressFamily == AddressFamily.InterNetworkV6),
-                            role = _role
-                        },
-                        "pair-3");
-                }
-                catch { /* debug only */ }
-                // #endregion
+
                 return;
             }
             catch (Exception ex)
             {
                 last = ex;
-                // #region agent log
-                AgentDebug.Log("H21", "InternetSession.cs:ConnectMqttAsync", "mqtt connect retry",
-                    new
-                    {
-                        role = _role,
-                        attempt,
-                        detail = ex.Message.Length > 80 ? ex.Message[..80] : ex.Message
-                    },
-                    "pair-3");
-                // #endregion
                 if (attempt < 4)
                 {
                     try
@@ -542,11 +484,6 @@ public sealed class InternetSession : IAsyncDisposable
         }
 
         if (gen != _sessionGen || last is null) return;
-        // #region agent log
-        AgentDebug.Log("H5", "InternetSession.cs:ConnectMqttAsync", "mqtt connect fail",
-            new { role = _role, detail = last.Message.Length > 80 ? last.Message[..80] : last.Message },
-            "pair-3");
-        // #endregion
         SetState(new PairingState.Failed(last.Message));
     }
 
@@ -604,11 +541,6 @@ public sealed class InternetSession : IAsyncDisposable
                 try { await Task.Delay(2000, token).ConfigureAwait(false); }
                 catch { return; }
                 if (State is PairingState.Paired or PairingState.Confirming or PairingState.Failed) return;
-                // #region agent log
-                AgentDebug.Log("H9", "InternetSession.cs:StartJoinRetry", "publish join",
-                    new { role = _role, id8 = _sessionTopicId is { Length: >= 8 } t ? t[..8] : _sessionTopicId },
-                    "pair-3");
-                // #endregion
                 await PublishSignedAsync("g", "join").ConfigureAwait(false);
             }
         }, token);
@@ -628,11 +560,6 @@ public sealed class InternetSession : IAsyncDisposable
                 try { await Task.Delay(2000, token).ConfigureAwait(false); }
                 catch { return; }
                 if (State is not PairingState.Waiting || _guestLocked) return;
-                // #region agent log
-                AgentDebug.Log("H9", "InternetSession.cs:StartReadyRetry", "publish ready",
-                    new { role = _role, id8 = _sessionTopicId is { Length: >= 8 } t ? t[..8] : _sessionTopicId },
-                    "pair-3");
-                // #endregion
                 await PublishSignedAsync("h", "ready").ConfigureAwait(false);
             }
         }, token);
@@ -705,30 +632,15 @@ public sealed class InternetSession : IAsyncDisposable
     {
         if (_role is null || _authKey.Length == 0 || _encKey.Length == 0)
         {
-            // #region agent log
-            AgentDebug.Log("H8", "InternetSession.cs:HandleMessage", "msg drop",
-                new { reason = "no-keys", role = _role, id8 = _sessionTopicId is { Length: >= 8 } t0 ? t0[..8] : _sessionTopicId },
-                "pair-3");
-            // #endregion
             return;
         }
         if (_topic is not null && mqttTopic != _topic)
         {
-            // #region agent log
-            AgentDebug.Log("H8", "InternetSession.cs:HandleMessage", "msg drop",
-                new { reason = "topic", role = _role, id8 = _sessionTopicId is { Length: >= 8 } t1 ? t1[..8] : _sessionTopicId },
-                "pair-3");
-            // #endregion
             return;
         }
         var inner = SignalingCrypto.OpenEnvelope(_encKey, payload);
         if (inner is null)
         {
-            // #region agent log
-            AgentDebug.Log("H8", "InternetSession.cs:HandleMessage", "msg drop",
-                new { reason = "envelope", role = _role, bytes = payload.Length, id8 = _sessionTopicId is { Length: >= 8 } t2 ? t2[..8] : _sessionTopicId },
-                "pair-3");
-            // #endregion
             return;
         }
         JsonObject? obj;
@@ -767,36 +679,14 @@ public sealed class InternetSession : IAsyncDisposable
         var canonical = SignalingCrypto.Canonical(from, eventName, ts, exp, nonce, extra);
         if (!SignalingCrypto.VerifyMac(_authKey, canonical, mac))
         {
-            // #region agent log
-            AgentDebug.Log("H8", "InternetSession.cs:HandleMessage", "msg drop",
-                new { reason = "mac", eventName, from, role = _role, id8 = _sessionTopicId is { Length: >= 8 } t3 ? t3[..8] : _sessionTopicId },
-                "pair-3");
-            // #endregion
             return;
         }
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         if (ts < now - 120 || ts > now + 60 || exp < now)
         {
-            // #region agent log
-            AgentDebug.Log("H8", "InternetSession.cs:HandleMessage", "msg drop",
-                new { reason = "fresh", eventName, from, role = _role, id8 = _sessionTopicId is { Length: >= 8 } t4 ? t4[..8] : _sessionTopicId },
-                "pair-3");
-            // #endregion
             return;
         }
         if (!RememberNonce(nonce)) return;
-
-        // #region agent log
-        AgentDebug.Log("H7", "InternetSession.cs:HandleMessage", "msg ok",
-            new
-            {
-                eventName,
-                from,
-                role = _role,
-                id8 = _sessionTopicId is { Length: >= 8 } tok ? tok[..8] : _sessionTopicId
-            },
-            "pair-3");
-        // #endregion
 
         var r = _role;
         switch (eventName)
@@ -816,11 +706,6 @@ public sealed class InternetSession : IAsyncDisposable
                 if (_guestLocked) return;
                 _guestLocked = true;
                 _readyRetryCts?.Cancel();
-                // #region agent log
-                AgentDebug.Log("H7", "InternetSession.cs:HandleMessage", "join handled",
-                    new { role = r, id8 = _sessionTopicId is { Length: >= 8 } tj ? tj[..8] : _sessionTopicId },
-                    "pair-3");
-                // #endregion
                 _ = PublishSignedAsync("h", "paired");
                 _ = PublishManifestAsync();
                 if (_skipPhraseConfirm) SetState(new PairingState.Paired());
@@ -1538,21 +1423,6 @@ public sealed class InternetSession : IAsyncDisposable
     private void SetState(PairingState state)
     {
         State = state;
-        // #region agent log
-        if (state is PairingState.Connecting or PairingState.Waiting or PairingState.Confirming
-            or PairingState.Paired or PairingState.Failed)
-        {
-            AgentDebug.Log("H4", "InternetSession.cs:SetState", "session state",
-                new
-                {
-                    kind = state.GetType().Name,
-                    role = _role,
-                    id8 = _sessionTopicId is { Length: >= 8 } t ? t[..8] : _sessionTopicId,
-                    failed = (state as PairingState.Failed)?.Reason is { } r ? (r.Length > 80 ? r[..80] : r) : null
-                },
-                "pair-3");
-        }
-        // #endregion
         StateChanged?.Invoke(state);
     }
 

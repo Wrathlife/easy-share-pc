@@ -54,10 +54,6 @@ public sealed class DataChannelTransfer
             _receiveRoot = receiveRoot;
             foreach (var f in Directory.EnumerateFiles(receiveRoot, "*.partial"))
                 File.Delete(f);
-            // #region agent log
-            AgentDebug.Log("wipe-folder", "DataChannelTransfer.cs:PrepareGuestSink", "prepared DC sink without recursive delete",
-                new { receiveRoot }, "post-fix");
-            // #endregion
         }
         if (expected.Count > 0)
         {
@@ -184,10 +180,6 @@ public sealed class DataChannelTransfer
             }
             if (!_guestAcked)
             {
-                // #region agent log
-                AgentDebug.Log("false-success", "DataChannelTransfer.cs:StartHostSendAsync", "host missing guest ACK",
-                    new { }, "post-fix");
-                // #endregion
                 Fail("Receiver did not confirm the transfer");
                 return;
             }

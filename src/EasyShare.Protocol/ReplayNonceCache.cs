@@ -19,9 +19,6 @@ public sealed class ReplayNonceCache
     {
         if (string.IsNullOrWhiteSpace(nonce))
         {
-            // #region agent log
-            AgentDebug.Log("empty-nonce", "ReplayNonceCache.cs:TryRemember", "rejected blank nonce", new { }, "B");
-            // #endregion
             return false;
         }
         lock (_gate)

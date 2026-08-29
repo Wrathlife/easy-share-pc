@@ -9,7 +9,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
-using System.Text.Json;
 using EasyShare.Protocol;
 using Microsoft.Win32;
 
@@ -55,46 +54,7 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(_store.ReceiveFolder);
         RefreshDevices();
         ShowHome();
-        // #region agent log
-        HookSizeDiagnostics();
-        // #endregion
     }
-
-    // #region agent log
-    private void HookSizeDiagnostics()
-    {
-        void LogSize(string element, System.Windows.SizeChangedEventArgs e) =>
-            AgentPairLog("UI1", "MainWindow.xaml.cs:HookSizeDiagnostics", "size changed", new
-            {
-                element,
-                w = Math.Round(e.NewSize.Width, 1),
-                h = Math.Round(e.NewSize.Height, 1),
-                prevW = Math.Round(e.PreviousSize.Width, 1),
-                prevH = Math.Round(e.PreviousSize.Height, 1)
-            });
-
-        SizeChanged += (_, e) => LogSize("Window", e);
-        DpiChanged += (_, e) => AgentPairLog("UI1", "MainWindow.xaml.cs:HookSizeDiagnostics", "dpi changed", new
-        {
-            oldScale = e.OldDpi.DpiScaleX,
-            newScale = e.NewDpi.DpiScaleX
-        });
-        HomePanel.SizeChanged += (_, e) => LogSize("HomePanel", e);
-        PairPanel.SizeChanged += (_, e) => LogSize("PairPanel", e);
-        PairScroll.SizeChanged += (_, e) => LogSize("PairScroll", e);
-        PairColumn.SizeChanged += (_, e) => LogSize("PairColumn", e);
-        PairScroll.ScrollChanged += (_, e) =>
-        {
-            if (e.ViewportHeightChange == 0 && e.ViewportWidthChange == 0 && e.ExtentHeightChange == 0) return;
-            AgentPairLog("UI1", "MainWindow.xaml.cs:HookSizeDiagnostics", "scroll viewport", new
-            {
-                vpW = Math.Round(PairScroll.ViewportWidth, 1),
-                vpH = Math.Round(PairScroll.ViewportHeight, 1),
-                extH = Math.Round(PairScroll.ExtentHeight, 1)
-            });
-        };
-    }
-    // #endregion
 
     private void ShowHome()
     {
@@ -159,22 +119,10 @@ public partial class MainWindow : Window
                 track.Background = new SolidColorBrush(
                     on ? Color.FromRgb(0x1A, 0x73, 0xE8) : Color.FromRgb(0xDA, 0xDC, 0xE0));
             }
-            // #region agent log
-            AgentPairLog("H13", "MainWindow.xaml.cs:OnEncryptToggleLoaded", "encrypt thumb ok", new
-            {
-                on,
-                encrypt = _vm.EncryptEnabled
-            });
-            // #endregion
         }
-        catch (Exception ex)
+        catch
         {
-            // #region agent log
-            AgentPairLog("H13", "MainWindow.xaml.cs:OnEncryptToggleLoaded", "encrypt thumb fail", new
-            {
-                detail = ex.GetType().Name + ": " + (ex.Message.Length > 80 ? ex.Message[..80] : ex.Message)
-            });
-            // #endregion
+            // Template thumb animation is best-effort.
         }
     }
 
@@ -194,30 +142,6 @@ public partial class MainWindow : Window
     }
 
     private bool _updatingTheirCode;
-    private int _lastProgressLogPct = -1;
-
-    private static void AgentPairLog(string hypothesisId, string location, string message, object data)
-    {
-        // #region agent log
-        try
-        {
-            var payload = new Dictionary<string, object?>
-            {
-                ["sessionId"] = "eccb22",
-                ["runId"] = "pair-9",
-                ["hypothesisId"] = hypothesisId,
-                ["location"] = location,
-                ["message"] = message,
-                ["data"] = data,
-                ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            };
-            File.AppendAllText(
-                Path.Combine(@"D:\AI-SANDBOX\projects\easy-share-pc", "debug-eccb22.log"),
-                JsonSerializer.Serialize(payload) + "\n");
-        }
-        catch { /* debug ingest must never break pairing */ }
-        // #endregion
-    }
 
     private void OnTheirCodeChanged(object sender, TextChangedEventArgs e)
     {
@@ -226,18 +150,6 @@ public partial class MainWindow : Window
         var incoming = TheirCodeBox.Text ?? "";
         // Wire form only in the box — inserting a hyphen here jumps the caret on the digit half.
         var raw = PairingCode.SanitizeTyping(incoming);
-        // #region agent log
-        AgentPairLog("H1", "MainWindow.xaml.cs:OnTheirCodeChanged", "code edit", new
-        {
-            inLen = incoming.Length,
-            caret,
-            rawLen = raw.Length,
-            rewritten = incoming != raw,
-            valid = PairingCode.IsValidShort(raw),
-            has01 = raw.Contains('0') || raw.Contains('1'),
-            hyphenIn = incoming.Contains('-')
-        });
-        // #endregion
         if (incoming != raw)
         {
             var atEnd = caret >= incoming.Length;
@@ -263,15 +175,6 @@ public partial class MainWindow : Window
     private async void OnJoin(object sender, RoutedEventArgs e)
     {
         var normalized = PairingCode.Normalize(TheirCodeBox.Text ?? "");
-        // #region agent log
-        AgentPairLog("H3", "MainWindow.xaml.cs:OnJoin", "join tap", new
-        {
-            len = normalized.Length,
-            valid = PairingCode.IsValidShort(normalized),
-            liveState = _live?.State.GetType().Name,
-            has01 = normalized.Contains('0') || normalized.Contains('1')
-        });
-        // #endregion
         if (!PairingCode.IsValidShort(normalized))
         {
             _vm.Status = "Enter a valid pairing code";
@@ -281,20 +184,6 @@ public partial class MainWindow : Window
         _joinStartedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         _vm.Status = "Connecting to the pairing server…";
         ApplyHubVisibility();
-        // #region agent log
-        AgentPairLog("H22", "MainWindow.xaml.cs:OnJoin", "hub vis after join tap", new
-        {
-            showHub = _vm.ShowHub,
-            showLive = _vm.ShowLiveCode,
-            showJoinPause = _vm.ShowJoiningPause,
-            showJoinField = _vm.ShowJoinField,
-            showRename = _vm.ShowRename,
-            pairVis = PairPanel.Visibility.ToString(),
-            homeVis = HomePanel.Visibility.ToString(),
-            phase = _phase.ToString(),
-            onUi = Dispatcher.CheckAccess()
-        });
-        // #endregion
         // Paint the joining UI before MQTT (TLS can block the UI thread and blank the window).
         await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
 
@@ -320,30 +209,8 @@ public partial class MainWindow : Window
             session = new InternetSession();
             WireLive(session);
             _live = session;
-            // #region agent log
-            AgentPairLog("H15", "MainWindow.xaml.cs:OnJoin", "guest session start", new
-            {
-                gen,
-                codeLen = normalized.Length,
-                id8 = SignalingCrypto.TopicId(normalized) is { Length: >= 8 } tid
-                    ? tid[..8]
-                    : SignalingCrypto.TopicId(normalized)
-            });
-            // #endregion
             await Task.Run(async () => await session.StartGuestAsync(normalized).ConfigureAwait(false))
                 .ConfigureAwait(true);
-            // #region agent log
-            AgentPairLog("H22", "MainWindow.xaml.cs:OnJoin", "hub vis after guest connect", new
-            {
-                showHub = _vm.ShowHub,
-                showLive = _vm.ShowLiveCode,
-                showJoinPause = _vm.ShowJoiningPause,
-                showJoinField = _vm.ShowJoinField,
-                liveState = _live?.State.GetType().Name,
-                pairVis = PairPanel.Visibility.ToString(),
-                joining = _joiningTheirCode
-            });
-            // #endregion
         }
         catch (Exception ex)
         {
@@ -578,30 +445,11 @@ public partial class MainWindow : Window
         }
         if (gen != _liveStartGen || _joiningTheirCode || !ReferenceEquals(_live, session))
         {
-            // #region agent log
-            AgentPairLog("H15", "MainWindow.xaml.cs:StartLiveHostAsync", "host discarded after join race", new
-            {
-                gen,
-                currentGen = _liveStartGen,
-                joining = _joiningTheirCode
-            });
-            // #endregion
             try { await session.StopAsync(); } catch { /* ignore */ }
             if (ReferenceEquals(_live, session)) _live = null;
             return;
         }
         ApplyHubVisibility();
-        // #region agent log
-        AgentPairLog("H10", "MainWindow.xaml.cs:StartLiveHostAsync", "live reminted", new
-        {
-            newCode,
-            liveState = _live.State.GetType().Name,
-            showLive = _vm.ShowLiveCode,
-            codeLen = _liveCode?.Length ?? 0,
-            phase = _phase.ToString(),
-            gen
-        });
-        // #endregion
     }
 
     private async Task RestartInboxAsync()
@@ -612,13 +460,6 @@ public partial class MainWindow : Window
         if (_checkingTrusted ||
             _phase is PairPhase.Sending or PairPhase.Receiving or PairPhase.AcceptIncoming)
         {
-            // #region agent log
-            AgentPairLog("H12", "MainWindow.xaml.cs:RestartInboxAsync", "inbox skip busy", new
-            {
-                phase = _phase.ToString(),
-                checking = _checkingTrusted
-            });
-            // #endregion
             return;
         }
         var devices = InboxDevices();
@@ -714,7 +555,6 @@ public partial class MainWindow : Window
         _sendTarget = target;
         _entries = files;
         _vm.Status = "";
-        _lastProgressLogPct = -1;
         await EnsureLiveAsync();
         if (!_live!.IsPeerJoined)
             await _live.StopAsync();
@@ -728,14 +568,6 @@ public partial class MainWindow : Window
         _xfer = new InternetSession();
         WireXfer(_xfer);
         var manifest = files.Select(f => new SharedFileInfo(f.RelativePath, f.SizeBytes)).ToList();
-        // #region agent log
-        AgentPairLog("H12", "MainWindow.xaml.cs:BeginSendAsync", "host send start", new
-        {
-            files = files.Count,
-            encrypt = _vm.EncryptEnabled,
-            phase = _phase.ToString()
-        });
-        // #endregion
         await _xfer.StartHostTrustedAsync(target, manifest);
     }
 
@@ -784,15 +616,6 @@ public partial class MainWindow : Window
     private void OnLiveState(PairingState state)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => OnLiveState(state)); return; }
-        // #region agent log
-        AgentPairLog("H4", "MainWindow.xaml.cs:OnLiveState", "live state", new
-        {
-            kind = state.GetType().Name,
-            joining = _joiningTheirCode,
-            phase = _phase.ToString(),
-            failed = (state as PairingState.Failed)?.Reason?[..Math.Min(80, ((PairingState.Failed)state).Reason.Length)]
-        });
-        // #endregion
         switch (state)
         {
             case PairingState.Connecting:
@@ -914,28 +737,12 @@ public partial class MainWindow : Window
                     _vm.CheckingTrusted = false;
                     _vm.Status = "";
                     _phase = PairPhase.Sending;
-                    // #region agent log
-                    AgentPairLog("H12", "MainWindow.xaml.cs:OnXferState", "phase Sending", new
-                    {
-                        xfer = state.GetType().Name,
-                        encrypt = _vm.EncryptEnabled
-                    });
-                    // #endregion
                     ApplyPhaseUi();
                 }
                 break;
             case PairingState.TrustedIncoming incoming:
                 if (_checkingTrusted || _phase == PairPhase.Sending || _sendTarget is not null)
                 {
-                    // #region agent log
-                    AgentPairLog("H12", "MainWindow.xaml.cs:OnXferState", "ignore TrustedIncoming while sending", new
-                    {
-                        phase = _phase.ToString(),
-                        checking = _checkingTrusted,
-                        peer = incoming.PeerName,
-                        files = incoming.Files.Count
-                    });
-                    // #endregion
                     break;
                 }
                 _incomingPeerName = incoming.PeerName;
@@ -1031,15 +838,6 @@ public partial class MainWindow : Window
             if (_live is not null) await _live.StopAsync();
             await RestartInboxAsync();
             await StartLiveHostAsync(newCode: true);
-            // #region agent log
-            AgentPairLog("H10", "MainWindow.xaml.cs:OnTransferEndedAsync", "hub after cancel", new
-            {
-                liveState = _live?.State.GetType().Name,
-                showLive = _vm.ShowLiveCode,
-                joining = _joiningTheirCode,
-                codeLen = _liveCode?.Length ?? 0
-            });
-            // #endregion
             return;
         }
         if (_phase == PairPhase.Sending)
@@ -1112,21 +910,6 @@ public partial class MainWindow : Window
         var curPct = p.CurrentFileTotal > 0 ? 100.0 * p.CurrentFileDone / p.CurrentFileTotal : 0;
         _vm.CurrentProgressValue = curPct;
         _vm.CurrentProgressText = $"{FormatBytes(p.CurrentFileDone)} / {FormatBytes(p.CurrentFileTotal)}";
-        // #region agent log
-        var ipct = (int)pct;
-        if (ipct != _lastProgressLogPct && (ipct is 0 or 20 or 40 or 60 or 80 or >= 99))
-        {
-            _lastProgressLogPct = ipct;
-            AgentPairLog("H14", "MainWindow.xaml.cs:ApplyProgress", "progress", new
-            {
-                pct = ipct,
-                speed = p.SpeedBytesPerSec,
-                done = p.BytesDone,
-                total = p.BytesTotal,
-                sending = p.Sending
-            });
-        }
-        // #endregion
     }
 
     private void PersistTrustIfComplete()
@@ -1181,13 +964,6 @@ public partial class MainWindow : Window
             now - _joinStartedAtMs > 45_000 &&
             _live?.State is PairingState.Waiting or PairingState.Connecting or PairingState.Idle)
         {
-            // #region agent log
-            AgentPairLog("H15", "MainWindow.xaml.cs:OnTick", "join timeout", new
-            {
-                waitedMs = now - _joinStartedAtMs,
-                liveState = _live?.State.GetType().Name
-            });
-            // #endregion
             _joiningTheirCode = false;
             _joinStartedAtMs = 0;
             _vm.Status =
