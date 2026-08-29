@@ -38,6 +38,33 @@ public static class SignalingCrypto
         return Convert.ToHexString(digest).ToLowerInvariant()[..32];
     }
 
+    public static string TrustTopicId(string pairId) => TopicId(pairId);
+
+    public static string MqttCodeTopic(string normalizedCode) => $"easyshare/v1/{TopicId(normalizedCode)}";
+
+    public static string MqttTrustTopic(string pairId) => $"easyshare/v1/trust/{TrustTopicId(pairId)}";
+
+    public static string RandomTrustKeyHex()
+    {
+        var bytes = new byte[32];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    public static string ExtraToken(string value) =>
+        value.Replace('|', '/').Replace('\n', ' ').Replace('\r', ' ');
+
+    public static string TrustOfferMacExtra(string pairId, string trustKeyHex, string deviceId, string name) =>
+        string.Join("|", pairId, trustKeyHex, deviceId, ExtraToken(name));
+
+    public static string TrustAckMacExtra(string pairId, string deviceId, string name) =>
+        string.Join("|", pairId, deviceId, ExtraToken(name));
+
+    public static string TrustRequestMacExtra(string deviceId, string name) =>
+        string.Join("|", deviceId, ExtraToken(name));
+
+    public static string TrustPongMacExtra(string probeNonce) => probeNonce;
+
     public static byte[] AuthKey(string normalizedCode) => SessionKeysFrom(normalizedCode).Auth;
     public static byte[] EncKey(string normalizedCode) => SessionKeysFrom(normalizedCode).Enc;
 
@@ -60,26 +87,14 @@ public static class SignalingCrypto
     private static byte[] MasterKey(string normalizedCode)
     {
         var salt = SHA256.HashData(Utf8.GetBytes("easyshare-v1-salt|" + normalizedCode));
-        // Java PBEKeySpec / PBKDF2WithHmacSHA256 encodes password chars as UTF-16BE.
-        var passwordBytes = PasswordUtf16Be(normalizedCode);
+        // Android Conscrypt / BouncyCastle PBKDF2WithHmacSHA256 encodes the password as UTF-8
+        // (not UTF-16BE). Using UTF-16BE made Windows envelopes undecryptable on the phone.
         return Rfc2898DeriveBytes.Pbkdf2(
-            passwordBytes,
+            Utf8.GetBytes(normalizedCode),
             salt,
             Pbkdf2Iterations,
             HashAlgorithmName.SHA256,
             MasterKeyBits / 8);
-    }
-
-    private static byte[] PasswordUtf16Be(string s)
-    {
-        var chars = s.ToCharArray();
-        var bytes = new byte[chars.Length * 2];
-        for (var i = 0; i < chars.Length; i++)
-        {
-            bytes[i * 2] = (byte)(chars[i] >> 8);
-            bytes[i * 2 + 1] = (byte)chars[i];
-        }
-        return bytes;
     }
 
     private static byte[] ExpandKey(byte[] master, string label)

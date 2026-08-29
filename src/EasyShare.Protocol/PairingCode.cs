@@ -31,6 +31,14 @@ public static class PairingCode
         return code[..LetterCount] + "-" + code[^DigitCount..];
     }
 
+    /// <summary>Hyphen after the letter block while typing (wire form has no hyphen).</summary>
+    public static string FormatTyping(string raw)
+    {
+        var code = SanitizeTyping(raw);
+        if (code.Length <= LetterCount) return code;
+        return code[..LetterCount] + "-" + code[LetterCount..];
+    }
+
     public static string Normalize(string raw) =>
         string.Concat(raw.Trim().ToUpperInvariant().Replace("-", "").Replace(" ", "")
             .Where(char.IsLetterOrDigit));

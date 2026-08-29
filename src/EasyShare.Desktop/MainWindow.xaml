@@ -1,55 +1,566 @@
 ﻿<Window x:Class="EasyShare.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
+        xmlns:local="clr-namespace:EasyShare.Desktop"
         Title="Netshare"
-        Height="560" Width="480"
-        MinHeight="480" MinWidth="400"
+        Height="720" Width="440"
+        ResizeMode="CanMinimize"
         WindowStartupLocation="CenterScreen"
-        Background="#F4F6F8">
-  <DockPanel Margin="24">
-    <TextBlock DockPanel.Dock="Top" Text="Netshare" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,4"/>
-    <TextBlock DockPanel.Dock="Top" Text="Device-to-device file sharing — no account, no ads."
-               Foreground="#55606A" Margin="0,0,0,20" TextWrapping="Wrap"/>
+        Background="#F8FAFC"
+        FontFamily="Segoe UI"
+        FontSize="14"
+        Foreground="#202124">
+  <Window.Resources>
+    <!-- Android Theme.kt light: Google Blue + CoolOffWhite -->
+    <SolidColorBrush x:Key="BlueBrush" Color="#1A73E8"/>
+    <SolidColorBrush x:Key="BlueDarkBrush" Color="#174EA6"/>
+    <SolidColorBrush x:Key="BlueContainerBrush" Color="#D2E3FC"/>
+    <SolidColorBrush x:Key="TertiaryContainerBrush" Color="#E8F0FE"/>
+    <SolidColorBrush x:Key="InkBrush" Color="#202124"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#5F6368"/>
+    <SolidColorBrush x:Key="SurfaceVariantBrush" Color="#F1F3F4"/>
+    <SolidColorBrush x:Key="OutlineVariantBrush" Color="#DADCE0"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#D93025"/>
+    <SolidColorBrush x:Key="ErrorContainerBrush" Color="#FCE8E6"/>
+    <SolidColorBrush x:Key="OnErrorContainerBrush" Color="#5F2120"/>
 
-    <StackPanel x:Name="HomePanel">
-      <Button Content="Share files" Height="48" Margin="0,0,0,12" Click="OnShareClick"/>
-      <Button Content="Receive files" Height="48" Click="OnReceiveClick"/>
-      <TextBlock Text="{Binding Status}" Margin="0,24,0,0" TextWrapping="Wrap" Foreground="#334"/>
-    </StackPanel>
+    <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    <local:InverseBoolToVisConverter x:Key="InverseBoolToVis"/>
 
-    <StackPanel x:Name="SharePanel" Visibility="Collapsed">
-      <Button Content="← Back" HorizontalAlignment="Left" Margin="0,0,0,12" Click="OnBackHome" Padding="8,4"/>
-      <Button Content="Pick files…" Height="40" Margin="0,0,0,12" Click="OnPickFiles"/>
-      <CheckBox x:Name="EncryptToggle" Content="Encrypt via MQTT (skip WebRTC)" Margin="0,0,0,12"/>
-      <Button Content="Start sharing" Height="44" Margin="0,0,0,16" Click="OnStartShare"/>
-      <TextBlock Text="Share code" FontWeight="SemiBold"/>
-      <TextBlock Text="{Binding CodeDisplay}" FontSize="28" FontFamily="Consolas" Margin="0,4,0,12"/>
-      <TextBlock Text="Confirm phrase" FontWeight="SemiBold"/>
-      <TextBlock Text="{Binding Phrase}" FontSize="18" Margin="0,4,0,12"/>
-      <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-        <Button Content="Yes, same phrase" Margin="0,0,8,0" IsEnabled="{Binding CanConfirm}" Click="OnConfirm" Padding="12,6"/>
-        <Button Content="Cancel" Click="OnReject" Padding="12,6"/>
+    <Style x:Key="PrimaryButton" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource BlueBrush}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="16,14"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    CornerRadius="24" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="bd" Property="Opacity" Value="0.45"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#174EA6"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="OutlineButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource BlueDarkBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
+      <Setter Property="BorderThickness" Value="1.5"/>
+      <Setter Property="Padding" Value="16,14"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="24" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="bd" Property="Opacity" Value="0.45"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#E8F0FE"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="TextButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource BlueBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="8,8"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="IconButton" TargetType="Button">
+      <Setter Property="Width" Value="40"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    CornerRadius="20" Width="40" Height="40">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#E8F0FE"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="CompactOutlineButton" TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="MinWidth" Value="132"/>
+      <Setter Property="Padding" Value="28,10"/>
+      <Setter Property="FontSize" Value="14"/>
+    </Style>
+
+    <Style x:Key="EncryptToggleCard" TargetType="ToggleButton">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Background" Value="#E8ECEE"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="card" Background="{TemplateBinding Background}"
+                    CornerRadius="16" Padding="16,14">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="&#xE72E;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                           VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                  <TextBlock Text="Encrypt file transfer" FontWeight="SemiBold"
+                             TextWrapping="Wrap"/>
+                  <TextBlock Text="Uses an encrypted relay. Transfers are slower."
+                             Foreground="{StaticResource MutedBrush}"
+                             FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="2" x:Name="track" Width="44" Height="24"
+                        CornerRadius="12" VerticalAlignment="Center">
+                  <Border.Background>
+                    <SolidColorBrush Color="#DADCE0" po:Freeze="False"/>
+                  </Border.Background>
+                  <Border x:Name="thumb" Width="18" Height="18" CornerRadius="9"
+                          Background="White" HorizontalAlignment="Left" VerticalAlignment="Center"
+                          Margin="3,0,3,0" UseLayoutRounding="False">
+                    <Border.RenderTransform>
+                      <TranslateTransform X="0" po:Freeze="False"/>
+                    </Border.RenderTransform>
+                  </Border>
+                </Border>
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Trigger.EnterActions>
+                  <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="thumb"
+                                       Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                       To="20" Duration="0:0:0.18">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut"/>
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                      <ColorAnimation Storyboard.TargetName="track"
+                                      Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                      To="#1A73E8" Duration="0:0:0.18"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="thumb"
+                                       Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                       To="0" Duration="0:0:0.18">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut"/>
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                      <ColorAnimation Storyboard.TargetName="track"
+                                      Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                      To="#DADCE0" Duration="0:0:0.18"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="card" Property="Background" Value="#E0E3E6"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="20"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="HubSection" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
+    </Style>
+
+    <Style x:Key="BodyMuted" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="LineHeight" Value="20"/>
+    </Style>
+
+    <Style x:Key="FieldBox" TargetType="TextBox">
+      <Setter Property="Height" Value="48"/>
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="FontFamily" Value="Consolas"/>
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
+      <Setter Property="BorderThickness" Value="1.5"/>
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border x:Name="bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="12"
+                    SnapsToDevicePixels="True">
+              <ScrollViewer x:Name="PART_ContentHost"
+                            Margin="{TemplateBinding Padding}"
+                            VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsFocused" Value="True">
+                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BlueDarkBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <!-- HOME -->
+    <Grid x:Name="HomePanel" Visibility="Visible">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Button Grid.Row="0" Content="&#xE946;" Style="{StaticResource IconButton}"
+              HorizontalAlignment="Right"
+              Margin="20,12,20,0" Click="OnAboutClick" ToolTip="About"/>
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled">
+        <Grid MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource FindAncestor, AncestorType=ScrollViewer}}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <StackPanel Grid.Row="0" MaxWidth="340"
+                      Margin="24,8,24,0">
+            <TextBlock Text="Netshare"
+                       FontSize="34" FontWeight="Bold"
+                       Foreground="{StaticResource BlueBrush}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock Text="{Binding HomeSubtitle}"
+                       Style="{StaticResource BodyMuted}"
+                       TextAlignment="Center"
+                       Margin="4,10,4,0"/>
+          </StackPanel>
+          <StackPanel Grid.Row="1" Width="320" MaxWidth="320"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                      Margin="24,24,24,40">
+            <ToggleButton Style="{StaticResource EncryptToggleCard}"
+                          IsChecked="{Binding EncryptEnabled, Mode=TwoWay}"
+                          Loaded="OnEncryptToggleLoaded"
+                          Checked="OnEncryptChanged" Unchecked="OnEncryptChanged"
+                          Margin="0,0,0,16"/>
+            <Button Content="Pair devices" Style="{StaticResource PrimaryButton}"
+                    Margin="0,0,0,12" Click="OnPairClick"/>
+            <Button Content="Received files" Style="{StaticResource OutlineButton}"
+                    Click="OnOpenReceivedClick"/>
+          </StackPanel>
+        </Grid>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- PAIR -->
+    <Grid x:Name="PairPanel" Visibility="Collapsed" Background="#F8FAFC">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Button Content="&#xE72B;" Style="{StaticResource IconButton}"
+              Click="OnPairBack" ToolTip="Back" HorizontalAlignment="Left"
+              Margin="20,12,20,4"/>
+      <!-- Scrollbar stays reserved (Visible, not Auto): hub content height sits right at
+           the viewport boundary, so Auto toggled the bar on every status/code update and
+           the whole centered column jumped sideways by the bar's width. -->
+      <ScrollViewer x:Name="PairScroll" Grid.Row="1" VerticalScrollBarVisibility="Visible"
+                    HorizontalScrollBarVisibility="Disabled">
+        <!-- Stretch (default), not Center: a centered StackPanel is sized by its widest
+             child, so the whole column expanded ~150 px whenever the status line appeared
+             and shrank back on hub re-entry. Stretch + MaxWidth keeps it 360 and centered. -->
+        <StackPanel x:Name="PairColumn" MaxWidth="360" Margin="24,16,24,32">
+
+          <!-- Confirm words -->
+          <StackPanel Visibility="{Binding ShowConfirmCard, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Confirm these are the right devices" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8"/>
+            <TextBlock Text="Both screens should show the same two words. Read them aloud, then confirm."
+                       Style="{StaticResource BodyMuted}" Margin="0,0,0,20"/>
+            <Border Background="{StaticResource BlueContainerBrush}" CornerRadius="16" Padding="20,32" Margin="0,0,0,12">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="MATCH WORDS" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{StaticResource BlueDarkBrush}" Opacity="0.7"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="{Binding Phrase}" FontSize="28" FontWeight="Bold"
+                           Foreground="{StaticResource BlueDarkBrush}"
+                           HorizontalAlignment="Center" Margin="0,12,0,0"
+                           TextAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="{Binding ConfirmHint}" Style="{StaticResource BodyMuted}" Margin="0,0,0,16"/>
+            <Button Content="{Binding ConfirmButtonText}" Style="{StaticResource PrimaryButton}"
+                    IsEnabled="{Binding CanConfirm}" Click="OnConfirm" Margin="0,0,0,8"/>
+            <Button Content="No — cancel pairing" Style="{StaticResource OutlineButton}" Click="OnReject"/>
+          </StackPanel>
+
+          <!-- Save trusted device -->
+          <StackPanel Visibility="{Binding ShowSaveCard, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Confirm pairing" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8"/>
+            <TextBlock Text="{Binding SaveCardHint}" Style="{StaticResource BodyMuted}" Margin="0,0,0,16"/>
+            <TextBlock Text="Name this device" FontWeight="SemiBold" Margin="0,0,0,6"
+                       Visibility="{Binding ShowSaveNameField, Converter={StaticResource BoolToVis}}"/>
+            <TextBox Text="{Binding SaveDeviceName, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource FieldBox}" FontFamily="Segoe UI" FontSize="15"
+                     Visibility="{Binding ShowSaveNameField, Converter={StaticResource BoolToVis}}"
+                     Margin="0,0,0,16"/>
+            <Button Content="Save this device" Style="{StaticResource PrimaryButton}"
+                    Visibility="{Binding ShowSaveNameField, Converter={StaticResource BoolToVis}}"
+                    Click="OnSaveDevice" Margin="0,0,0,8"/>
+            <Button Content="Skip for now" Style="{StaticResource OutlineButton}"
+                    Click="OnSkipSave" Margin="0,0,0,8"/>
+          </StackPanel>
+
+          <!-- Incoming trusted -->
+          <StackPanel Visibility="{Binding ShowIncomingCard, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{Binding IncomingTitle}" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8"/>
+            <TextBlock Text="This is a trusted device. Accept to receive files."
+                       Style="{StaticResource BodyMuted}" Margin="0,0,0,16"/>
+            <TextBlock Text="{Binding IncomingDetail}" Style="{StaticResource BodyMuted}" Margin="0,0,0,16"/>
+            <Button Content="Accept" Style="{StaticResource PrimaryButton}" Click="OnAcceptIncoming" Margin="0,0,0,8"/>
+            <Button Content="Decline" Style="{StaticResource OutlineButton}" Click="OnDeclineIncoming"/>
+          </StackPanel>
+
+          <!-- Transfer -->
+          <StackPanel Visibility="{Binding ShowTransfer, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{Binding TransferHeadline}" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{StaticResource BlueBrush}" Margin="0,0,0,8"/>
+            <TextBlock Text="{Binding TransferSubhead}" Style="{StaticResource BodyMuted}" Margin="0,0,0,16"/>
+            <TextBlock Text="Overall" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <ProgressBar Height="10" Value="{Binding ProgressValue}" Maximum="100"
+                         Foreground="{StaticResource BlueBrush}" Background="{StaticResource OutlineVariantBrush}"
+                         BorderThickness="0" Margin="0,0,0,6"/>
+            <TextBlock Text="{Binding ProgressText}" Style="{StaticResource BodyMuted}" Margin="0,0,0,16"/>
+            <TextBlock Text="{Binding CurrentFileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <ProgressBar Height="8" Value="{Binding CurrentProgressValue}" Maximum="100"
+                         Foreground="{StaticResource BlueBrush}" Background="{StaticResource OutlineVariantBrush}"
+                         BorderThickness="0" Margin="0,6,0,6"/>
+            <TextBlock Text="{Binding CurrentProgressText}" Style="{StaticResource BodyMuted}" Margin="0,0,0,20"/>
+            <Button Content="Cancel transfer" Style="{StaticResource OutlineButton}" Click="OnCancelTransfer"/>
+          </StackPanel>
+
+          <!-- Result -->
+          <StackPanel Visibility="{Binding ShowResult, Converter={StaticResource BoolToVis}}">
+            <Border CornerRadius="16" Padding="20,32" Margin="0,0,0,20"
+                    Background="{Binding ResultBrush}"
+                    TextElement.Foreground="{Binding ResultForeground}">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="{Binding ResultKicker}" FontSize="12" FontWeight="SemiBold"
+                           Opacity="0.75" HorizontalAlignment="Center"/>
+                <TextBlock Text="{Binding ResultTitle}" FontSize="24" FontWeight="Bold"
+                           TextAlignment="Center" Margin="0,12,0,8"/>
+                <TextBlock Text="{Binding ResultMessage}" TextAlignment="Center" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+            <ItemsControl ItemsSource="{Binding ResultFiles}" Margin="0,0,0,16">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <DockPanel Margin="0,0,0,10">
+                    <Button Content="Open" Style="{StaticResource TextButton}" DockPanel.Dock="Right"
+                            Tag="{Binding Path}" Click="OnOpenResultFile"/>
+                    <StackPanel>
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding Detail}" Style="{StaticResource BodyMuted}" FontSize="12"/>
+                    </StackPanel>
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="Dismiss" Style="{StaticResource PrimaryButton}" Click="OnDismissResult"/>
+          </StackPanel>
+
+          <!-- Hub / paired -->
+          <StackPanel Visibility="{Binding ShowHub, Converter={StaticResource BoolToVis}}">
+            <StackPanel Visibility="{Binding ShowLiveCode, Converter={StaticResource BoolToVis}}" Margin="0,0,0,8">
+              <TextBlock Text="Your code" Style="{StaticResource HubSection}"/>
+              <Border Height="1" Background="{StaticResource OutlineVariantBrush}" Margin="0,10,0,16"/>
+              <Border Background="{StaticResource SurfaceVariantBrush}" CornerRadius="16" Padding="20,24">
+                <StackPanel>
+                  <TextBlock Text="{Binding CodeDisplay}"
+                             FontFamily="Consolas" FontSize="26" FontWeight="Bold"
+                             HorizontalAlignment="Center" TextAlignment="Center"/>
+                  <TextBlock Text="{Binding CodeCountdown}" Style="{StaticResource BodyMuted}"
+                             TextAlignment="Center" HorizontalAlignment="Center" Margin="0,10,0,18"/>
+                  <Button Content="Copy" Style="{StaticResource CompactOutlineButton}" Click="OnCopyCode"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding ShowJoiningPause, Converter={StaticResource BoolToVis}}" Margin="0,0,0,28">
+              <TextBlock Text="Joining their code" Style="{StaticResource HubSection}"/>
+              <Border Height="1" Background="{StaticResource OutlineVariantBrush}" Margin="0,10,0,16"/>
+              <TextBlock Text="Your live code is paused so this PC is only a guest."
+                         Style="{StaticResource BodyMuted}"/>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding ShowPairedActions, Converter={StaticResource BoolToVis}}" Margin="0,0,0,28">
+              <TextBlock Text="Paired — either of you can send files. The other device taps Accept."
+                         TextWrapping="Wrap" FontSize="16" Margin="0,0,0,12"/>
+              <TextBlock Text="{Binding UnsavedCountdown}" Style="{StaticResource BodyMuted}"
+                         Margin="0,0,0,12"
+                         Visibility="{Binding ShowUnsavedCountdown, Converter={StaticResource BoolToVis}}"/>
+              <Button Content="Send files" Style="{StaticResource PrimaryButton}"
+                      IsEnabled="{Binding CanSend}" Click="OnSendFiles" Margin="0,0,0,10"/>
+              <Button Content="Send a folder" Style="{StaticResource OutlineButton}"
+                      IsEnabled="{Binding CanSend}" Click="OnSendFolder"/>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding ShowJoinField, Converter={StaticResource BoolToVis}}" Margin="0,20,0,8">
+              <TextBlock Text="Add their code" Style="{StaticResource HubSection}"/>
+              <Border Height="1" Background="{StaticResource OutlineVariantBrush}" Margin="0,10,0,16"/>
+              <TextBox x:Name="TheirCodeBox" Style="{StaticResource FieldBox}"
+                       TextChanged="OnTheirCodeChanged"/>
+              <Button Content="Join" Style="{StaticResource PrimaryButton}"
+                      IsEnabled="{Binding CanJoin}" Click="OnJoin" Margin="0,12,0,8"/>
+            </StackPanel>
+
+            <TextBlock Text="Saved devices" Style="{StaticResource HubSection}" Margin="0,20,0,0"/>
+            <Border Height="1" Background="{StaticResource OutlineVariantBrush}" Margin="0,10,0,16"/>
+            <TextBlock Text="Checking paired device…" Style="{StaticResource BodyMuted}" Margin="0,0,0,12"
+                       Visibility="{Binding CheckingTrusted, Converter={StaticResource BoolToVis}}"/>
+            <TextBlock Text="None yet. After you pair, both of you can confirm pairing."
+                       Style="{StaticResource BodyMuted}"
+                       Visibility="{Binding ShowEmptyDevices, Converter={StaticResource BoolToVis}}"/>
+            <ItemsControl ItemsSource="{Binding Devices}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="0,0,0,20">
+                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <Button Content="Send files" Style="{StaticResource PrimaryButton}"
+                            Tag="{Binding}" Click="OnSendToDevice" Margin="0,0,0,4"/>
+                    <StackPanel Orientation="Horizontal">
+                      <Button Content="Rename" Style="{StaticResource TextButton}"
+                              Tag="{Binding}" Click="OnRenameDevice"/>
+                      <Button Content="Remove" Style="{StaticResource TextButton}"
+                              Tag="{Binding}" Click="OnRemoveDevice"/>
+                    </StackPanel>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+          <TextBlock Text="{Binding Status}" Style="{StaticResource BodyMuted}" Margin="0,16,0,0"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- ABOUT -->
+    <Grid x:Name="AboutPanel" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <DockPanel Margin="20,12,20,8" LastChildFill="True">
+        <Button Content="&#xE72B;" Style="{StaticResource IconButton}"
+                Click="OnAboutBack" ToolTip="Back" DockPanel.Dock="Left"
+                Margin="0,0,16,0"/>
+        <TextBlock Text="About" Style="{StaticResource SectionTitle}"
+                   VerticalAlignment="Center"/>
+      </DockPanel>
+      <StackPanel Grid.Row="1" MaxWidth="360" Margin="24,16,24,32">
+        <TextBlock Text="Netshare" FontSize="24" FontWeight="SemiBold"/>
+        <TextBlock Text="{Binding AboutVersion}" Style="{StaticResource BodyMuted}" Margin="0,8,0,8"/>
+        <TextBlock Text="Pair with the Android app using a short code, then send files over the internet. No ads, no accounts."
+                   Style="{StaticResource BodyMuted}" Margin="0,0,0,24"/>
+        <Button Content="Received files" Style="{StaticResource PrimaryButton}"
+                Click="OnOpenReceivedClick" Margin="0,0,0,12"/>
+        <Button Content="Close" Style="{StaticResource OutlineButton}" Click="OnAboutBack"/>
       </StackPanel>
-      <ProgressBar Height="10" Value="{Binding ProgressValue}" Maximum="100" Margin="0,0,0,8"/>
-      <TextBlock Text="{Binding ProgressText}" Margin="0,0,0,8"/>
-      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#334"/>
-    </StackPanel>
+    </Grid>
 
-    <StackPanel x:Name="ReceivePanel" Visibility="Collapsed">
-      <Button Content="← Back" HorizontalAlignment="Left" Margin="0,0,0,12" Click="OnBackHome" Padding="8,4"/>
-      <TextBlock Text="Share code" FontWeight="SemiBold"/>
-      <TextBox x:Name="ReceiveCodeBox" Height="36" FontSize="18" FontFamily="Consolas" Margin="0,4,0,12"/>
-      <CheckBox x:Name="ReceiveEncryptToggle" Content="Expect MQTT encrypt path" Margin="0,0,0,12"/>
-      <Button Content="Connect" Height="44" Margin="0,0,0,16" Click="OnStartReceive"/>
-      <TextBlock Text="Confirm phrase" FontWeight="SemiBold"/>
-      <TextBlock Text="{Binding Phrase}" FontSize="18" Margin="0,4,0,12"/>
-      <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-        <Button Content="Yes, same phrase" Margin="0,0,8,0" IsEnabled="{Binding CanConfirm}" Click="OnConfirm" Padding="12,6"/>
-        <Button Content="Cancel" Click="OnReject" Padding="12,6"/>
-      </StackPanel>
-      <ProgressBar Height="10" Value="{Binding ProgressValue}" Maximum="100" Margin="0,0,0,8"/>
-      <TextBlock Text="{Binding ProgressText}" Margin="0,0,0,8"/>
-      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#334"/>
-    </StackPanel>
-  </DockPanel>
+    <!-- Rename overlay -->
+    <Border Background="#99000000" Visibility="{Binding ShowRename, Converter={StaticResource BoolToVis}}">
+      <Border Background="White" CornerRadius="16" Padding="24" MaxWidth="360"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+        <StackPanel>
+          <TextBlock Text="Name this device" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,12"/>
+          <TextBox Text="{Binding RenameValue, UpdateSourceTrigger=PropertyChanged}"
+                   Style="{StaticResource FieldBox}" FontFamily="Segoe UI" FontSize="15" Margin="0,0,0,16"/>
+          <Button Content="Save" Style="{StaticResource PrimaryButton}" Click="OnRenameSave" Margin="0,0,0,8"/>
+          <Button Content="Cancel" Style="{StaticResource OutlineButton}" Click="OnRenameCancel"/>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Grid>
 </Window>

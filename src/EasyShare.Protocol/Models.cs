@@ -26,6 +26,8 @@ public abstract record PairingState
     public sealed record Waiting : PairingState;
     public sealed record Confirming(string Phrase, bool LocalConfirmed, bool PeerConfirmed) : PairingState;
     public sealed record Paired : PairingState;
+    public sealed record ListeningForTrusted : PairingState;
+    public sealed record TrustedIncoming(string PeerName, IReadOnlyList<SharedFileInfo> Files) : PairingState;
     public sealed record Failed(string Reason) : PairingState;
 }
 

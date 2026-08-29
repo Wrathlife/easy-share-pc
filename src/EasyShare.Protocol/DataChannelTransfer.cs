@@ -50,9 +50,14 @@ public sealed class DataChannelTransfer
     {
         if (_receiveRoot is null)
         {
-            if (Directory.Exists(receiveRoot)) Directory.Delete(receiveRoot, true);
             Directory.CreateDirectory(receiveRoot);
             _receiveRoot = receiveRoot;
+            foreach (var f in Directory.EnumerateFiles(receiveRoot, "*.partial"))
+                File.Delete(f);
+            // #region agent log
+            AgentDebug.Log("wipe-folder", "DataChannelTransfer.cs:PrepareGuestSink", "prepared DC sink without recursive delete",
+                new { receiveRoot }, "post-fix");
+            // #endregion
         }
         if (expected.Count > 0)
         {
@@ -78,6 +83,8 @@ public sealed class DataChannelTransfer
                 if (!_active) break;
                 if (frame.Length > 0 && frame[0] == DcFrames.TypeReady) _guestReady = true;
                 if (frame.Length > 0 && frame[0] == DcFrames.TypeXferAck) _guestAcked = true;
+                if (frame.Length > 0 && frame[0] == DcFrames.TypeXferCancel)
+                    Fail("Transfer cancelled by the other device");
             }
         }, token);
 
@@ -104,50 +111,85 @@ public sealed class DataChannelTransfer
             var total = Math.Max(1, entries.Sum(e => Math.Max(1, e.SizeBytes)));
             long overallDone = 0;
             ResetSpeedWindow();
+            var wireMax = _session.MaxPayloadBytes();
             for (var index = 0; index < entries.Count; index++)
             {
                 token.ThrowIfCancellationRequested();
                 var entry = entries[index];
-                var path = ProtocolPaths.SanitizeWirePath(entry.RelativePath) ?? entry.RelativePath[..Math.Min(180, entry.RelativePath.Length)];
+                if (entry.SizeBytes > ProtocolPaths.MaxFileBytes)
+                {
+                    Fail($"“{entry.DisplayName}” is too large");
+                    return;
+                }
+                var path = ProtocolPaths.SanitizeWirePath(entry.RelativePath) ?? "file.bin";
                 var declaredSize = Math.Max(0, entry.SizeBytes);
                 _session.Send(DcFrames.EncodeFileBegin(index, path, declaredSize));
                 await _session.AwaitSendBufferLowAsync(ct: token).ConfigureAwait(false);
                 long fileDone = 0;
                 var fileTotal = Math.Max(1, declaredSize);
                 await using var input = File.OpenRead(entry.AbsolutePath);
-                var buf = new byte[DcFrames.ChunkBytes];
+                var readBuf = new byte[DcChunkLimits.PreferredChunkBytes];
                 while (true)
                 {
                     token.ThrowIfCancellationRequested();
-                    var n = await input.ReadAsync(buf.AsMemory(0, buf.Length), token).ConfigureAwait(false);
+                    var n = await input.ReadAsync(readBuf.AsMemory(0, readBuf.Length), token).ConfigureAwait(false);
                     if (n <= 0) break;
-                    var chunk = n == buf.Length ? buf : buf.AsSpan(0, n).ToArray();
-                    await _session.AwaitSendBufferLowAsync(ct: token).ConfigureAwait(false);
-                    if (!_session.Send(DcFrames.EncodeChunk(index, fileDone, chunk)))
+                    var off = 0;
+                    while (off < n)
                     {
-                        Fail("DataChannel send failed");
-                        return;
+                        var take = Math.Min(wireMax, n - off);
+                        var chunk = readBuf.AsSpan(off, take).ToArray();
+                        await _session.AwaitSendBufferLowAsync(ct: token).ConfigureAwait(false);
+                        if (!_session.Send(DcFrames.EncodeChunk(index, fileDone, chunk)))
+                        {
+                            Fail("DataChannel send failed");
+                            return;
+                        }
+                        fileDone += take;
+                        overallDone += take;
+                        off += take;
+                        var speed = NoteBytes(take);
+                        var remain = Math.Max(0, total - overallDone);
+                        long? eta = remain == 0
+                            ? null
+                            : speed > 0 ? Math.Max(1, remain / speed) : null;
+                        _progress(new TransferProgress(true, Math.Min(overallDone, total), total,
+                            entry.RelativePath, Math.Min(fileDone, fileTotal), fileTotal, speed, eta));
                     }
-                    fileDone += n;
-                    overallDone += n;
-                    var speed = NoteBytes(n);
-                    var remain = Math.Max(0, total - overallDone);
-                    long? eta = speed > 0 ? Math.Max(1, remain / speed) : null;
-                    _progress(new TransferProgress(true, Math.Min(overallDone, total), total,
-                        entry.RelativePath, Math.Min(fileDone, fileTotal), fileTotal, speed, eta));
                 }
                 _session.Send(DcFrames.EncodeFileDone(index, path, fileDone));
+            }
+            // Drain the SCTP send queue before asking the guest to ACK — otherwise we
+            // report 100% while megabytes are still buffered locally and the peer dies.
+            if (!await _session.AwaitSendBufferLowAsync(
+                    threshold: 64 * 1024,
+                    timeout: TimeSpan.FromMinutes(10),
+                    ct: token).ConfigureAwait(false))
+            {
+                Fail("Connection lost while finishing send");
+                return;
             }
             for (var i = 0; i < 3 && !_guestAcked; i++)
             {
                 _session.Send(DcFrames.EncodeXferDone());
                 await Task.Delay(150, token).ConfigureAwait(false);
             }
-            var ackDeadline = DateTime.UtcNow.AddSeconds(20);
+            // Large files need longer than 20s for the peer to finish writing + ACK.
+            var ackSeconds = (int)Math.Clamp(total / (1024L * 1024L) + 45, 45, 900);
+            var ackDeadline = DateTime.UtcNow.AddSeconds(ackSeconds);
             while (DateTime.UtcNow < ackDeadline && !_guestAcked)
             {
                 _session.Send(DcFrames.EncodeXferDone());
-                await Task.Delay(250, token).ConfigureAwait(false);
+                await Task.Delay(400, token).ConfigureAwait(false);
+            }
+            if (!_guestAcked)
+            {
+                // #region agent log
+                AgentDebug.Log("false-success", "DataChannelTransfer.cs:StartHostSendAsync", "host missing guest ACK",
+                    new { }, "post-fix");
+                // #endregion
+                Fail("Receiver did not confirm the transfer");
+                return;
             }
             _progress(new TransferProgress(true, total, total, null, 0, 0, _lastMeasuredSpeed, 0));
             _complete();
@@ -200,6 +242,17 @@ public sealed class DataChannelTransfer
         ResetSpeedWindow();
     }
 
+    public void SendCancel()
+    {
+        try { _session.Send(DcFrames.EncodeXferCancel()); } catch { /* best-effort */ }
+    }
+
+    public void Abort(string reason)
+    {
+        Reset();
+        _failed(reason);
+    }
+
     private void HandleFrame(byte[] frame)
     {
         if (!DcFrames.TryParse(frame, out var type, out var payload)) return;
@@ -217,16 +270,24 @@ public sealed class DataChannelTransfer
                 var path = ProtocolPaths.SanitizeWirePath(Encoding.UTF8.GetString(payload.Slice(6, pathLen)));
                 if (path is null || _receiveRoot is null) return;
                 var size = BinaryPrimitives.ReadInt64BigEndian(payload.Slice(6 + pathLen, 8));
+                if (size < 0 || size > ProtocolPaths.MaxFileBytes)
+                {
+                    Fail("File size is missing or too large");
+                    return;
+                }
                 DiscardIncomplete();
-                var safe = path.Replace('/', '_');
-                if (safe.Length > 160) safe = safe[..160];
-                var finalFile = Path.Combine(_receiveRoot, safe);
-                var partial = finalFile + ".partial";
+                var bound = ProtocolPaths.BindUnderRoot(_receiveRoot, path);
+                if (bound is null)
+                {
+                    Fail("Invalid file path");
+                    return;
+                }
+                var partial = bound + ".partial";
                 if (File.Exists(partial)) File.Delete(partial);
-                if (File.Exists(finalFile)) File.Delete(finalFile);
+                if (File.Exists(bound)) File.Delete(bound);
                 _currentOut = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None);
                 _currentPartial = partial;
-                _currentFinal = finalFile;
+                _currentFinal = bound;
                 _currentPath = path;
                 _currentFileIndex = index;
                 _currentExpected = size;
@@ -241,6 +302,11 @@ public sealed class DataChannelTransfer
                 var offset = BinaryPrimitives.ReadInt64BigEndian(payload.Slice(4, 8));
                 if (index != _currentFileIndex || offset != _currentWritten) return;
                 var data = payload[12..];
+                if (_currentExpected >= 0 && _currentWritten + data.Length > _currentExpected)
+                {
+                    Fail($"Size overflow for {_currentPath}");
+                    return;
+                }
                 _currentOut.Write(data);
                 _currentWritten += data.Length;
                 _receiveDoneBytes += data.Length;
@@ -275,7 +341,7 @@ public sealed class DataChannelTransfer
                     return;
                 }
                 var len = new FileInfo(partial).Length;
-                if (expectedSize >= 0 && len != expectedSize)
+                if (expectedSize < 0 || len != expectedSize)
                 {
                     File.Delete(partial);
                     Fail($"Size mismatch for {path}");
@@ -292,6 +358,9 @@ public sealed class DataChannelTransfer
             case DcFrames.TypeXferDone:
                 DiscardIncomplete();
                 MarkGuestComplete();
+                break;
+            case DcFrames.TypeXferCancel:
+                Fail("Transfer cancelled by the other device");
                 break;
         }
     }
@@ -337,8 +406,11 @@ public sealed class DataChannelTransfer
             _speedWindowStartMs = now;
             _speedWindowBytes = 0;
         }
-        else if (_lastMeasuredSpeed == 0)
+        else if (_lastMeasuredSpeed == 0 && elapsed >= 250)
+        {
+            // Avoid 1ms windows that report absurd multi‑100 MB/s spikes.
             _lastMeasuredSpeed = (_speedWindowBytes * 1000L) / elapsed;
+        }
         return _lastMeasuredSpeed;
     }
 

@@ -2,18 +2,20 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationTitle>Netshare</ApplicationTitle>
     <Product>Netshare</Product>
+    <Version>1.0.0</Version>
     <AssemblyName>Netshare</AssemblyName>
     <RootNamespace>EasyShare.Desktop</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\EasyShare.Protocol\EasyShare.Protocol.csproj" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

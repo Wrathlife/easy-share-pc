@@ -62,12 +62,64 @@ public class SignalingCryptoTests
     }
 
     [Fact]
+    public void ConfirmPhraseKnownVectorMatchesAndroid()
+    {
+        Assert.Equal("CIDER · HERON", SignalingCrypto.ConfirmPhrase("ABCDF23457"));
+        Assert.Equal(
+            "easyshare/v1/7bd0f4a5a1031562763c51d93c4bdea8",
+            SignalingCrypto.MqttCodeTopic("ABCDF23457"));
+    }
+
+    [Fact]
     public void TopicHidesRawCode()
     {
         var code = PairingCode.GenerateShort();
         var topic = SignalingCrypto.TopicId(code);
         Assert.Equal(32, topic.Length);
         Assert.DoesNotContain(code, topic, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("easyshare/v1/" + topic, SignalingCrypto.MqttCodeTopic(code));
+    }
+
+    [Fact]
+    public void TrustTopicsAreDistinctFromCodeTopics()
+    {
+        var pairId = Guid.NewGuid().ToString();
+        var trust = SignalingCrypto.MqttTrustTopic(pairId);
+        Assert.StartsWith("easyshare/v1/trust/", trust);
+        Assert.DoesNotContain(pairId, trust, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(SignalingCrypto.TopicId(pairId), SignalingCrypto.TrustTopicId(pairId));
+    }
+
+    [Fact]
+    public void TrustMacExtrasMatchAndroidLayout()
+    {
+        var extra = SignalingCrypto.TrustOfferMacExtra("pair", "key", "dev", "Name|x");
+        Assert.Equal("pair|key|dev|Name/x", extra);
+        Assert.Equal("pair|dev|Win", SignalingCrypto.TrustAckMacExtra("pair", "dev", "Win"));
+        Assert.Equal("dev|PC", SignalingCrypto.TrustRequestMacExtra("dev", "PC"));
+        Assert.Equal("nonce", SignalingCrypto.TrustPongMacExtra("nonce"));
+    }
+
+    [Fact]
+    public void TrustedDevicesAddRenameRemove()
+    {
+        var now = 1L;
+        var a = new TrustedDevice("p1", "d1", "Phone", "Pixel", "aa", now, now);
+        var added = TrustedDevices.Add(Array.Empty<TrustedDevice>(), a, 3);
+        var ok = Assert.IsType<TrustedAddResult.Ok>(added);
+        Assert.Equal("Phone", TrustedDevices.DisplayName(ok.Devices[0]));
+        var renamed = TrustedDevices.Rename(ok.Devices, "p1", "Kitchen tablet");
+        Assert.NotNull(renamed);
+        Assert.Equal("Kitchen tablet", renamed![0].PeerName);
+        Assert.Empty(TrustedDevices.Remove(renamed, "p1"));
+    }
+
+    [Fact]
+    public void PairingCodeRotationFreezesWhenPeerJoined()
+    {
+        Assert.False(PairingCodeRotation.ShouldRotate(peerJoined: true, handshakeLocked: false));
+        Assert.Equal(0, PairingCodeRotation.RemainingMs(0, PairingCodeRotation.IntervalMs + 10));
+        Assert.Equal("ABCDF-23457".Length, PairingCode.FormatTyping("ABCDF23457").Length);
     }
 
     [Fact]
@@ -90,6 +142,33 @@ public class SignalingCryptoTests
         Assert.Null(ProtocolPaths.SanitizeWirePath("../etc/passwd"));
         Assert.Null(ProtocolPaths.SanitizeWirePath("/abs"));
         Assert.Null(ProtocolPaths.SanitizeWirePath("a/./b"));
+        Assert.Null(ProtocolPaths.SanitizeWirePath("C:/Windows/foo"));
+        Assert.Null(ProtocolPaths.SanitizeWirePath("C:evil"));
+        Assert.Null(ProtocolPaths.SanitizeWirePath("CON"));
+        Assert.Null(ProtocolPaths.SanitizeWirePath("foo:bar"));
+    }
+
+    [Fact]
+    public void BindUnderRootRejectsDriveRelativeNames()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ns-recv-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var combineEscapes = Path.Combine(root, "C:_Windows_foo");
+                Assert.False(combineEscapes.StartsWith(root, StringComparison.OrdinalIgnoreCase));
+            }
+            Assert.Null(ProtocolPaths.BindUnderRoot(root, "C:_Windows_foo"));
+            var ok = ProtocolPaths.BindUnderRoot(root, "ok.txt");
+            Assert.NotNull(ok);
+            Assert.StartsWith(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar), ok);
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { /* ignore */ }
+        }
     }
 
     [Fact]

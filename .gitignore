@@ -1,4 +1,5 @@
 artifacts/
+current/
 **/bin/
 **/obj/
 *.user

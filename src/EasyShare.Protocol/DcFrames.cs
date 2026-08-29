@@ -13,7 +13,8 @@ public static class DcFrames
     public const byte TypeFileDone = 8;
     public const byte TypeXferDone = 9;
     public const byte TypeXferAck = 10;
-    public const int ChunkBytes = 64 * 1024;
+    public const byte TypeXferCancel = 11;
+    public const int ChunkBytes = DcChunkLimits.PreferredChunkBytes;
 
     public static byte[] Frame(byte type, ReadOnlySpan<byte> payload)
     {
@@ -28,6 +29,7 @@ public static class DcFrames
     public static byte[] EncodeReady() => Frame(TypeReady, ReadOnlySpan<byte>.Empty);
     public static byte[] EncodeXferAck() => Frame(TypeXferAck, ReadOnlySpan<byte>.Empty);
     public static byte[] EncodeXferDone() => Frame(TypeXferDone, ReadOnlySpan<byte>.Empty);
+    public static byte[] EncodeXferCancel() => Frame(TypeXferCancel, ReadOnlySpan<byte>.Empty);
 
     public static byte[] EncodeFileBegin(int index, string path, long size)
     {
